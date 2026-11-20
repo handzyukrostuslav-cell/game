@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <title>CITY ARCHITECT — Муніципальний 3D-симулятор</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Повідомлення режиму фото / першої особи -->
+  <div id="mode-banner" class="mode-banner hidden">
+    <span id="mode-banner-text">Режим камери</span>
+    <button id="btn-exit-special-mode" class="btn-mini">✕ Вийти</button>
+  </div>
+
+  <!-- Головне меню / Створення міста -->
+  <div id="main-menu" class="modal-overlay">
+    <div class="menu-card">
+      <div class="menu-badge">MUNICIPAL GIS & URBAN ENGINE v2.0</div>
+      <h1>🏙️ CITY ARCHITECT</h1>
+      <p class="subtitle">Повномасштабний симулятор управління мегаполісом (ПК + Мобільні)</p>
+
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="input-city-name">Назва муніципалітету</label>
+          <input type="text" id="input-city-name" value="Новий Київ" maxlength="24" />
+        </div>
+
+        <div class="form-group">
+          <label for="select-map-size">Масштаб карти</label>
+          <select id="select-map-size">
+            <option value="24">2 × 2 км (Оптимально для мобільних)</option>
+            <option value="34" selected>4 × 4 км (Стандартний регіон)</option>
+            <option value="46">8 × 8 км (Мегаполіс для ПК)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="select-terrain">Ландшафт і ресурси</label>
+          <select id="select-terrain">
+            <option value="river" selected>Річкова долина (ГЕС + Родючі ґрунти)</option>
+            <option value="coast">Морське узбережжя (Порт + Курорти)</option>
+            <option value="hills">Гірський кряж (Руда + Вітрогенерація)</option>
+            <option value="plains">Рівнинний степ (Агро + Нафта)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="select-mode">Економічний режим</label>
+          <select id="select-mode">
+            <option value="career" selected>Кар'єра ($65 000 + етапи)</option>
+            <option value="hard">Реалістичний ($25 000 + складні податки)</option>
+            <option value="sandbox">Пісочниця (Безліміт бюджету)</option>
+          </select>
+        </div>
+
+        <div class="form-group full-width">
+          <label for="select-graphics">Профіль продуктивності пристрою</label>
+          <select id="select-graphics">
+            <option value="auto" selected>Автовизначення (Рекомендовано)</option>
+            <option value="low">Мобільний / Економія батареї (60 FPS, без тіней)</option>
+            <option value="medium">Збалансований (Середні тіні + освітлення)</option>
+            <option value="high">Ультра ПК (М'які тіні, ліхтарі, частинки)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="menu-actions">
+        <button id="btn-start-game" class="btn-primary">🚀 Заснувати місто</button>
+        <button id="btn-load-menu" class="btn-secondary">📂 Завантажити</button>
+        <label class="btn-secondary file-btn">
+          📥 Імпорт JSON
+          <input type="file" id="input-import-menu" accept=".json" hidden />
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- Основний ігровий HUD -->
+  <div id="game-hud" class="hidden">
+    <!-- Верхня панель телеметрії -->
+    <header class="top-bar">
+      <div class="hud-left">
+        <div class="city-identity">
+          <span class="city-title" id="hud-city-name">Новий Київ</span>
+          <span class="badge" id="hud-stage">Поселення</span>
+        </div>
+        <div class="time-weather">
+          <span id="hud-date">01.03.2026</span>
+          <span id="hud-time">08:00</span>
+          <span id="hud-season" title="Пора року">🌱 Весна</span>
+          <span id="hud-weather" title="Погода і температура">☀️ +16°C</span>
+        </div>
+      </div>
+
+      <!-- Індикатор попиту RCI -->
+      <div class="rci-box" title="Попит: Житло (R) / Комерція (C) / Промисловість (I)">
+        <div class="rci-col">
+          <div class="rci-track"><div id="rci-res" class="rci-fill res" style="height: 60%"></div></div>
+          <span>R</span>
+        </div>
+        <div class="rci-col">
+          <div class="rci-track"><div id="rci-com" class="rci-fill com" style="height: 40%"></div></div>
+          <span>C</span>
+        </div>
+        <div class="rci-col">
+          <div class="rci-track"><div id="rci-ind" class="rci-fill ind" style="height: 50%"></div></div>
+          <span>I</span>
+        </div>
+      </div>
+
+      <!-- Ключові показники міста -->
+      <div class="hud-metrics">
+        <button class="metric-pill clickable" data-modal="modal-stats" title="Населення та статистика">
+          👥 <strong id="hud-pop">0</strong>
+        </button>
+        <button class="metric-pill clickable" data-modal="modal-economy" title="Бюджет, податки та кредити">
+          💰 $<strong id="hud-budget">65 000</strong>
+          <small id="hud-net" class="pos">(+$0)</small>
+        </button>
+        <div class="metric-pill" title="Електромережа (Споживання / Генерація)">
+          ⚡ <span id="hud-power">0/0</span>
+        </div>
+        <div class="metric-pill" title="Водопостачання (Споживання / Подача)">
+          💧 <span id="hud-water">0/0</span>
+        </div>
+        <div class="metric-pill hide-mobile" title="Тепломережа (Опалення)">
+          🔥 <span id="hud-heat">0/0</span>
+        </div>
+        <div class="metric-pill" title="Рівень задоволеності та рейтинг мера">
+          😊 <strong id="hud-happiness">100</strong>%
+        </div>
+      </div>
+
+      <!-- Швидкі муніципальні термінали -->
+      <div class="hud-actions">
+        <button class="icon-btn" data-modal="modal-economy" title="Економіка та Бюджет">📊</button>
+        <button class="icon-btn" data-modal="modal-council" title="Міська рада та Постанови">🏛️</button>
+        <button class="icon-btn" data-modal="modal-transit" title="Громадський транспорт">🚌</button>
+        <button class="icon-btn" data-modal="modal-stats" title="Аналітика та Досягнення">🏆</button>
+        <button class="icon-btn" id="btn-audio-toggle" title="Звук міста">🔊</button>
+        <button class="icon-btn" data-modal="modal-settings" title="Налаштування графіки та збереження">⚙️</button>
+      </div>
+    </header>
+
+    <!-- Панель інформаційних шарів (Overlays) -->
+    <div class="overlay-bar">
+      <button class="ov-btn active" data-overlay="NONE">🗺️ Звичайний</button>
+      <button class="ov-btn" data-overlay="UTILITIES">⚡ Мережі</button>
+      <button class="ov-btn" data-overlay="LAND_VALUE">💎 Вартість землі</button>
+      <button class="ov-btn" data-overlay="POLLUTION">☣️ Екологія</button>
+      <button class="ov-btn" data-overlay="SERVICES">🛡️ Служби</button>
+      <button class="ov-btn" data-overlay="RESOURCES">⛏️ Ресурси</button>
+    </div>
+
+    <!-- Ліва / Мобільна висувна панель будівництва -->
+    <aside id="build-drawer" class="left-panel">
+      <div class="category-tabs">
+        <button class="cat-tab active" data-cat="general">🔍 Загальні</button>
+        <button class="cat-tab" data-cat="roads">🛣️ Дороги</button>
+        <button class="cat-tab" data-cat="zones">🏘️ Зони</button>
+        <button class="cat-tab" data-cat="utilities">⚡ Мережі</button>
+        <button class="cat-tab" data-cat="services">🏥 Служби</button>
+        <button class="cat-tab" data-cat="industry">🏭 Індустрія</button>
+        <button class="cat-tab" data-cat="terrain">⛰️ Рельєф</button>
+      </div>
+
+      <div id="tools-container" class="tools-list"></div>
+    </aside>
+
+    <!-- Права панель: Інспектор, Екстрені виклики, Події -->
+    <aside id="inspector-drawer" class="right-panel">
+      <div class="panel-box inspector-box">
+        <div class="panel-header">
+          <h3>📋 Інспектор GIS</h3>
+          <button id="btn-close-inspector" class="btn-mini mobile-only">✕</button>
+        </div>
+        <div id="inspector-content" class="inspector-body">
+          <p class="muted">Торкніться будь-якої ділянки карти для перегляду телеметрії, мешканців або стану мереж.</p>
+        </div>
+      </div>
+
+      <div class="panel-box alerts-box">
+        <h3>🚨 Диспетчерська служб</h3>
+        <ul id="alerts-list" class="alerts-list">
+          <li class="ok">Усі муніципальні системи працюють штатно.</li>
+        </ul>
+      </div>
+
+      <div class="panel-box events-box hide-mobile">
+        <h3>📰 Хроніка міста</h3>
+        <ul id="events-list" class="events-list"></ul>
+      </div>
+    </aside>
+
+    <!-- Нижня панель часу, камери та мобільного меню -->
+    <footer class="bottom-bar">
+      <div class="bottom-left">
+        <button id="btn-toggle-drawer" class="ctrl-btn mobile-only">🏗️ Будівництво</button>
+        <button id="btn-undo" class="ctrl-btn" title="Скасувати дію (Ctrl+Z)">↩️</button>
+        <button id="btn-redo" class="ctrl-btn" title="Повторити дію (Ctrl+Y)">↪️</button>
+        <span class="controls-hint hide-mobile">ЛКМ: Дія | ПКМ: Обертання | WASD: Рух | F: Прогулянка | H: Фото</span>
+      </div>
+
+      <div class="sim-controls">
+        <button id="btn-cam-reset" class="ctrl-btn" title="Центр карти">🎥</button>
+        <button id="btn-walk-mode" class="ctrl-btn" title="Режим від першої особи">🚶</button>
+        <button id="btn-photo-mode" class="ctrl-btn" title="Фоторежим без інтерфейсу">📷</button>
+        <div class="divider"></div>
+        <button class="ctrl-btn speed-btn" data-speed="0" title="Пауза">⏸️</button>
+        <button class="ctrl-btn speed-btn active" data-speed="1" title="Швидкість 1x">▶️</button>
+        <button class="ctrl-btn speed-btn" data-speed="2" title="Швидкість 2x">⏩</button>
+        <button class="ctrl-btn speed-btn" data-speed="4" title="Швидкість 4x">⏭️</button>
+        <div class="divider"></div>
+        <button id="btn-quick-save" class="ctrl-btn" title="Швидке збереження">💾</button>
+      </div>
+    </footer>
+  </div>
+
+  <!-- МОДАЛЬНЕ ВІКНО: ЕКОНОМІКА ТА БЮДЖЕТ -->
+  <div id="modal-economy" class="modal-overlay hidden">
+    <div class="dialog-card">
+      <div class="dialog-header">
+        <h2>💰 Фінансовий департамент та Бюджет</h2>
+        <button class="close-modal">✕</button>
+      </div>
+      <div class="dialog-body grid-2">
+        <div class="card-section">
+          <h4>Податкові ставки (%)</h4>
+          <label class="slider-row">Житловий сектор: <strong id="val-tax-res">10%</strong>
+            <input type="range" id="slider-tax-res" min="1" max="25" value="10" />
+          </label>
+          <label class="slider-row">Комерція та офіси: <strong id="val-tax-com">11%</strong>
+            <input type="range" id="slider-tax-com" min="1" max="25" value="11" />
+          </label>
+          <label class="slider-row">Промисловість: <strong id="val-tax-ind">12%</strong>
+            <input type="range" id="slider-tax-ind" min="1" max="25" value="12" />
+          </label>
+
+          <h4 style="margin-top:14px;">Фінансування служб (%)</h4>
+          <label class="slider-row">Енергетика і ЖКГ: <strong id="val-fund-util">100%</strong>
+            <input type="range" id="slider-fund-util" min="50" max="150" value="100" />
+          </label>
+          <label class="slider-row">Освіта і Медицина: <strong id="val-fund-serv">100%</strong>
+            <input type="range" id="slider-fund-serv" min="50" max="150" value="100" />
+          </label>
+        </div>
+
+        <div class="card-section">
+          <h4>Щоденний баланс</h4>
+          <div id="finance-ledger" class="ledger-box"></div>
+
+          <h4 style="margin-top:14px;">Муніципальні кредити</h4>
+          <p class="muted" id="loan-status">Активних кредитів немає.</p>
+          <div class="btn-row">
+            <button id="btn-take-loan" class="btn-primary">Взяти кредит $25 000</button>
+            <button id="btn-repay-loan" class="btn-secondary">Погасити борг</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНЕ ВІКНО: МІСЬКА РАДА ТА ПОСТАНОВИ -->
+  <div id="modal-council" class="modal-overlay hidden">
+    <div class="dialog-card">
+      <div class="dialog-header">
+        <h2>🏛️ Міська рада та Муніципальні постанови</h2>
+        <button class="close-modal">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p class="muted" style="margin-bottom:12px;">Ухвалюйте міські програми, що змінюють економіку, екологію та поведінку мешканців.</p>
+        <div id="ordinances-list" class="ordinances-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНЕ ВІКНО: ГРОМАДСЬКИЙ ТРАНСПОРТ -->
+  <div id="modal-transit" class="modal-overlay hidden">
+    <div class="dialog-card">
+      <div class="dialog-header">
+        <h2>🚌 Управління громадським транспортом</h2>
+        <button class="close-modal">✕</button>
+      </div>
+      <div class="dialog-body">
+        <p class="muted">Виберіть інструмент <strong>«Автобусна зупинка»</strong> у меню доріг, встановіть 2 або більше зупинок на дорогах, і автобуси автоматично вийдуть на лінію!</p>
+        <div id="transit-summary" class="ledger-box" style="margin-top:12px;"></div>
+        <label class="slider-row" style="margin-top:12px;">Вартість проїзду: <strong id="val-ticket-price">$2</strong>
+          <input type="range" id="slider-ticket-price" min="0" max="10" value="2" />
+        </label>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНЕ ВІКНО: СТАТИСТИКА ТА ДОСЯГНЕННЯ -->
+  <div id="modal-stats" class="modal-overlay hidden">
+    <div class="dialog-card">
+      <div class="dialog-header">
+        <h2>📈 Аналітика розвитку та Досягнення</h2>
+        <button class="close-modal">✕</button>
+      </div>
+      <div class="dialog-body grid-2">
+        <div class="card-section">
+          <h4>Динаміка населення та бюджету</h4>
+          <canvas id="stats-chart" width="380" height="190" class="chart-canvas"></canvas>
+          <div id="demographics-box" class="ledger-box" style="margin-top:10px;"></div>
+        </div>
+        <div class="card-section">
+          <h4>Досягнення мера</h4>
+          <ul id="achievements-list" class="achievements-list"></ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- МОДАЛЬНЕ ВІКНО: НАЛАШТУВАННЯ ТА ЗБЕРЕЖЕННЯ -->
+  <div id="modal-settings" class="modal-overlay hidden">
+    <div class="dialog-card">
+      <div class="dialog-header">
+        <h2>⚙️ Налаштування рушія та Збереження</h2>
+        <button class="close-modal">✕</button>
+      </div>
+      <div class="dialog-body">
+        <div class="form-group" style="margin-bottom:14px;">
+          <label for="runtime-graphics">Якість 3D-рендерингу</label>
+          <select id="runtime-graphics">
+            <option value="low">Низька (Для смартфонів, 60 FPS)</option>
+            <option value="medium">Середня (Оптимально)</option>
+            <option value="high">Висока (Тіні + ліхтарі + частинки)</option>
+          </select>
+        </div>
+        <div class="btn-row" style="flex-wrap:wrap; gap:8px;">
+          <button id="btn-save-slot1" class="btn-primary">💾 Зберегти (Слот 1)</button>
+          <button id="btn-load-slot1" class="btn-secondary">📂 Завантажити (Слот 1)</button>
+          <button id="btn-export-json" class="btn-secondary">⬇️ Експорт у файл (.json)</button>
+          <label class="btn-secondary file-btn">
+            ⬆️ Імпорт із файлу (.json)
+            <input type="file" id="input-import-ingame" accept=".json" hidden />
+          </label>
+          <button id="btn-back-menu" class="btn-secondary" style="background:#7f1d1d;">🚪 Головне меню</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
